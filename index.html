@@ -3365,7 +3365,8 @@ SPECIAL_RECRUITS.forEach(sp=>{
 
     async function handleRecruitment(defeatedEnemies){
       try {
-        const candidates=defeatedEnemies.filter(e=>e.recruitable);
+        // 【修正】倒した敵だけを対象にする（逃げられた敵は対象外）
+        const candidates=(defeatedEnemies||[]).filter(e=>e && e.recruitable && !e.escaped);
         for(const e of candidates){
           try {
             if(Math.random()<recruitChanceFor(e)){
