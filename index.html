@@ -2071,11 +2071,10 @@ SPECIAL_RECRUITS.forEach(sp=>{
     }
     function applyRandomGrowth(ch){
       const g=ensureGrowth(ch);
-      g.hp += rnd(6, 14);
-      g.ap += rnd(2, 6);
-      const pool = ['atk','hit','agi','def'];
-      const rolls = 2 + (Math.random() < 0.35 ? 1 : 0);
-      for(let i=0;i<rolls;i++) g[pool[rnd(0, pool.length - 1)]] += 1;
+      // 【変更】レベルアップ時の伸び幅（0〜のランダム）
+      g.hp += rnd(0, 40);
+      g.ap += rnd(0, 20);
+      for(const k of ['atk','hit','agi','def']) g[k] += rnd(0, 10);
     }
     function battleStats(ch){
       ensureTempBuffs(ch);
