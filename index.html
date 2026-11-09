@@ -2069,12 +2069,18 @@ SPECIAL_RECRUITS.forEach(sp=>{
         防御: ch.base.def + g.def
       };
     }
+    // 伸び幅の抽選：大きい値ほど出にくい（0が最も出やすく、上限はごくたまに）
+    // Math.random()を2回引いて小さい方を採ると、0に近いほど確率が高くなる
+    function rollGrowth(max){
+      const r = Math.min(Math.random(), Math.random());
+      return Math.min(max, Math.floor(r * (max + 1)));
+    }
     function applyRandomGrowth(ch){
       const g=ensureGrowth(ch);
-      // 【変更】レベルアップ時の伸び幅（0〜のランダム）
-      g.hp += rnd(0, 40);
-      g.ap += rnd(0, 20);
-      for(const k of ['atk','hit','agi','def']) g[k] += rnd(0, 10);
+      // 【変更】レベルアップ時の伸び幅（0〜上限、大きい値ほど低確率）
+      g.hp += rollGrowth(40);
+      g.ap += rollGrowth(20);
+      for(const k of ['atk','hit','agi','def']) g[k] += rollGrowth(10);
     }
     function battleStats(ch){
       ensureTempBuffs(ch);
