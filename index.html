@@ -21,6 +21,11 @@
       font-family: "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif;
     }
     *{box-sizing:border-box}
+    /* 【追加】スマホでタップ／長押ししたときに文字が選択されてコピー候補が出るのを防ぐ */
+    html,body,body *{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+    /* 入力欄と、セーブコードなどコピーしたい場所だけは選択できるようにする */
+    input,textarea,select,[contenteditable="true"],.selectable,[data-selectable="1"],
+    #saveCodeBox,#saveCodeOutput,#saveExportText{-webkit-user-select:text;-moz-user-select:text;-ms-user-select:text;user-select:text;-webkit-touch-callout:default}
     html,body{margin:0;min-height:100%;color:var(--ink);background:var(--bg)}
     body{
       display:grid;place-items:center;padding:14px;
@@ -1166,6 +1171,16 @@ SPECIAL_RECRUITS.forEach(sp=>{
     const EVOLUTION_PREFIX = {3:'真', 4:'極', 5:'超極', 6:'神', 7:'超神', 8:'超極神', 9:'天'};
     const EVOLUTION_LABEL = {1:'第一進化', 2:'第二進化', 3:'第三進化', 4:'第四進化', 5:'第五進化', 6:'第六進化', 7:'第七進化', 8:'第八進化', 9:'第九進化'};
     // 【追加】進化データがない種族（生成された生き物・通常の敵の仲間など）にも自動で進化先を作る
+    // 【追加】スマホの長押しで出る「コピー／選択」メニューを抑止（入力欄とコピー用の場所は除く）
+    document.addEventListener('contextmenu', function(ev){
+      try{
+        const t = ev.target;
+        if(t && t.closest && t.closest('input,textarea,select,[contenteditable="true"],.selectable,[data-selectable="1"],#saveCodeBox')){
+          return; // 入力欄やコピーしたい場所では通常のメニューを許可
+        }
+        ev.preventDefault();
+      }catch(e){}
+    }, {passive:false});
     function ensureEvolveEntry(id, spHint){
       if(!id) return null;
       let sp = spHint || null;
