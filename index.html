@@ -508,7 +508,10 @@
           <h3 style="margin-top:14px">預り所</h3>
           <div id="storageList" class="storage-list"></div>
           <h3 style="margin-top:14px">図鑑</h3>
-          <details class="emote-help"><summary>味方キャラ図鑑</summary><div id="allyCatalog" class="catalog-box" style="margin-top:8px"></div></details>
+          <details class="emote-help"><summary>味方キャラ図鑑</summary><div id="allyCatalog" class="catalog-box" style="margin-top:8px"></div>
+            <button class="btn gray full" style="margin-top:8px;text-align:center" onclick="resetThisSaveCatalog()">🧹 このセーブの図鑑だけにする（図鑑リセット）</button>
+            <div id="catalogResetMsg" class="mini" style="margin-top:4px"></div>
+          </details>
           <details class="emote-help" style="margin-top:8px"><summary>敵キャラ図鑑</summary><div id="enemyCatalog" class="catalog-tabs" style="margin-top:8px"></div></details>
         </aside>
       </div>
@@ -1863,7 +1866,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
       });
       ensureRosterColorVariants();
       // 旧バージョンの共通図鑑データを、このセーブへ1回だけ引き継ぐ
-      migrateLegacyCatalogOnce().then(()=>{ try { renderCatalogs(); saveGame(); } catch(e){} });
+      migrateLegacyCatalogOnce().then(()=>{ try { pruneLegacyCatalogEntries(); renderCatalogs(); saveGame(); } catch(e){} });
       dungeon = null;
       busy = false;
       normalizeParty();
@@ -2259,6 +2262,24 @@ SPECIAL_RECRUITS.forEach(sp=>{
       }
       return species[0]; 
     }
+    // 【追加】そのIDの種族が実在するか（speciesById は未知IDで species[0] を返すため）
+    function speciesExists(id){
+      if(!id) return false;
+      if(species.some(s=>s.id===id)) return true;
+      if(SPECIAL_RECRUITS.some(s=>s.id===id)) return true;
+      if(PROC_RECRUIT_REGISTRY.some(s=>s.id===id)) return true;
+      if(typeof id === 'string' && id.includes('_s')){
+        const parts = id.split('_s');
+        if(parts.length===2 && !isNaN(parseInt(parts[1]))) return true;
+      }
+      return false;
+    }
+    function speciesVariantKeyOf(id){
+      if(!id) return '';
+      if(!speciesExists(id)) return 'id:'+id;
+      const sp = speciesById(id);
+      return sp ? (sp.baseName || sp.name) : ('id:'+id);
+    }
 
     const COLOR_VARIANT_FILTERS = [
       'none',
@@ -2541,7 +2562,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
     function rosterVariantKey(ch){
       if(!ch) return '';
       let sp = null;
-      try { sp = ch.speciesId ? speciesById(ch.speciesId) : null; } catch(e){ sp = null; }
+      try { sp = (ch.speciesId && speciesExists(ch.speciesId)) ? speciesById(ch.speciesId) : null; } catch(e){ sp = null; }
       return ch.baseName || (sp && (sp.baseName || sp.name)) || ch.speciesName || ch.speciesId || '';
     }
     function ensureRosterColorVariants(){
@@ -2564,7 +2585,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
     function nextColorVariantForSpecies(speciesId){
       if(!state) return 1;
       let key = speciesId;
-      try { const sp = speciesId ? speciesById(speciesId) : null; if(sp) key = sp.baseName || sp.name; } catch(e){}
+      try { key = speciesVariantKeyOf(speciesId) || speciesId; } catch(e){}
       const all=[...(state.party||[]), ...(state.storage||[])];
       const used = new Set(all.filter(ch=>rosterVariantKey(ch)===key).map(ch=>Math.max(1, Number(ch.colorVariant||1))));
       let v=1;
@@ -3421,6 +3442,46 @@ SPECIAL_RECRUITS.forEach(sp=>{
       if(!state.catalog.enemies) state.catalog.enemies={};
       return state.catalog;
     }
+    // 【追加】旧バージョンから引き継いだ記録のうち、このセーブに実在しない仲間は消す
+    function pruneLegacyCatalogEntries(){
+      if(!state || !state.catalog) return 0;
+      let removed = 0;
+      try{
+        const roster = [...(state.party||[]), ...(state.storage||[])];
+        const ownedKeys = new Set(roster.map(ch=>rosterVariantKey(ch)));
+        const ownedIds = new Set(roster.map(ch=>ch.speciesId));
+        const allies = catalogStore('allies');
+        Object.keys(allies).forEach(k=>{
+          const e = allies[k];
+          if(e && e._legacy){
+            const keep = ownedIds.has(k) || ownedKeys.has(speciesVariantKeyOf(k));
+            if(!keep){ delete allies[k]; removed++; }
+          }
+        });
+        const enemies = catalogStore('enemies');
+        Object.keys(enemies).forEach(k=>{
+          if(enemies[k] && enemies[k]._legacy){ delete enemies[k]; removed++; }
+        });
+      }catch(e){}
+      return removed;
+    }
+    // 【追加】このセーブの図鑑を「いま持っている仲間」だけに作り直す
+    async function resetThisSaveCatalog(){
+      if(!state) return;
+      const msg = $('catalogResetMsg');
+      if(!confirm('このセーブの図鑑をリセットします。\n今のパーティと預り所にいる仲間だけが図鑑に残ります。よろしいですか？')) return;
+      try{
+        state.catalog = {allies:{}, enemies:{}};
+        ensureCatalog();
+        for(const ch of [...(state.party||[]), ...(state.storage||[])]){
+          try { await unlockAllyCatalog(ch); } catch(e){}
+        }
+        if(msg) msg.textContent = `✅ このセーブの仲間 ${Object.keys(state.catalog.allies).length} 種類だけに整理しました。`;
+        addChat('system', `システム：このセーブの図鑑を整理しました（${Object.keys(state.catalog.allies).length}種類）。`);
+        saveGame();
+        renderCatalogs();
+      }catch(e){ if(msg) msg.textContent = 'エラー：'+e.message; }
+    }
     function catalogStore(kind){ const c=ensureCatalog(); return c[kind]; }
     function catalogGet(kind, key){ return catalogStore(kind)[key] || null; }
     function catalogPut(kind, key, entry){ catalogStore(kind)[key]=entry; return entry; }
@@ -3436,8 +3497,8 @@ SPECIAL_RECRUITS.forEach(sp=>{
         const oldAllies = await idbGetAll('allies');
         const oldEnemies = await idbGetAll('enemies');
         let moved = 0;
-        (oldAllies||[]).forEach(a=>{ if(a && a.id && !catalogGet('allies', a.id)){ catalogPut('allies', a.id, a); moved++; } });
-        (oldEnemies||[]).forEach(en=>{ if(en && en.key && !catalogGet('enemies', en.key)){ catalogPut('enemies', en.key, en); moved++; } });
+        (oldAllies||[]).forEach(a=>{ if(a && a.id && !catalogGet('allies', a.id)){ catalogPut('allies', a.id, {...a, _legacy:true}); moved++; } });
+        (oldEnemies||[]).forEach(en=>{ if(en && en.key && !catalogGet('enemies', en.key)){ catalogPut('enemies', en.key, {...en, _legacy:true}); moved++; } });
         localStorage.setItem(CATALOG_MIGRATED_KEY, String(Date.now()));
         if(moved) addChat('system', `システム：これまでの図鑑データ（${moved}件）をこのセーブに引き継ぎました。次回からはセーブごとに別々に記録されます。`);
         return moved;
@@ -3455,6 +3516,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
       }
       if(typeof entry.farewell !== 'number') entry.farewell = 0;
       entry.count++;
+      delete entry._legacy;
       catalogPut('allies', key, entry);
     }
     async function registerAllyFarewell(ch){
