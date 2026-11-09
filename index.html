@@ -3652,7 +3652,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
         entry={key:key, name:e.name, icon:e.emoji, category:enemyCategory(e), recruitable:!!e.recruitable, recruitKind:recruitKindOf(e), speciesId:e.speciesId||'', speciesName:e.speciesName||'', generated:!!e.generated, rareRank:e.rareRank||'', bossRank:e.bossRank||'', baseRoot:e.baseRoot||'', prefix:e.prefix||'', baseType:e.baseType||'', base:{hp:e.maxHp, ap:e.maxAp, atk:e.baseAtk??e.atk, hit:e.baseHit??e.hit, agi:e.baseAgi??e.agi, def:e.baseDef??e.def}, exp:e.exp||0, money:e.money||0, desc:enemyDescription(e), seen:0, defeated:0};
       }
       entry.seen++;
-      try { if(entry.recruitable) entry.desc = enemyDescription(e); } catch(err){}
+      try { if(entry.recruitable) entry.desc = enemyDescription(e); entry.icon = e.emoji || entry.icon; } catch(err){}
       catalogPut('enemies', key, entry);
     }
     async function registerEnemyDefeated(e){
@@ -5171,11 +5171,11 @@ SPECIAL_RECRUITS.forEach(sp=>{
       ['終末の','虚無の','天界の','神速の','無限の','星喰いの']
     ];
     const RARE_ENEMY_TABLE = [
-      {rank:'天レア敵', chance:1/100000000, prefix:'天虹メタル', mult:100000, def:80, agi:80, hp:.10, flee:.18},
-      {rank:'神レア敵', chance:1/1000000, prefix:'神金メタル', mult:25000, def:55, agi:55, hp:.12, flee:.15},
-      {rank:'超激レア敵', chance:1/10000, prefix:'虹メタル', mult:2500, def:35, agi:35, hp:.16, flee:.12},
-      {rank:'激レア敵', chance:1/1000, prefix:'金メタル', mult:500, def:24, agi:24, hp:.20, flee:.09},
-      {rank:'レア敵', chance:1/100, prefix:'銀メタル', mult:80, def:14, agi:14, hp:.28, flee:.06}
+      {rank:'天レア敵', chance:1/100000000, prefix:'天虹メタル', emoji:'🌈', mult:100000, def:80, agi:80, hp:.10, flee:.18},
+      {rank:'神レア敵', chance:1/1000000, prefix:'神金メタル', emoji:'✨', mult:25000, def:55, agi:55, hp:.12, flee:.15},
+      {rank:'超激レア敵', chance:1/10000, prefix:'虹メタル', emoji:'🌟', mult:2500, def:35, agi:35, hp:.16, flee:.12},
+      {rank:'激レア敵', chance:1/1000, prefix:'金メタル', emoji:'💠', mult:500, def:24, agi:24, hp:.20, flee:.09},
+      {rank:'レア敵', chance:1/100, prefix:'銀メタル', emoji:'💎', mult:80, def:14, agi:14, hp:.28, flee:.06}
     ];
 
     const NORMAL_BOSS_RANKS = [
@@ -5284,7 +5284,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
       const agi = Math.ceil((base.agi+Math.floor(elv*.18)+rarityAgi+bossAgi) * pm.agi * (bossRank?.rareBoss ? 1.8 : 1));
       const def = Math.ceil((base.def+Math.floor(elv*.30)+rarityDef+bossDef) * pm.def * (bossRank?.rareBoss ? 1.6 : 1));
       return {
-        name, prefix, baseRoot:base.root, baseType:base.type, emoji: rare ? '💎' : bossRank?.rareBoss ? '👑' : base.emoji, generated:true, rareRank:rare?.rank||'', bossRank:bossRank?.rank||'', rareBoss:!!bossRank?.rareBoss,
+        name, prefix, baseRoot:base.root, baseType:base.type, emoji: rare ? (rare.emoji || '💎') : bossRank?.rareBoss ? '👑' : base.emoji, generated:true, rareRank:rare?.rank||'', bossRank:bossRank?.rank||'', rareBoss:!!bossRank?.rareBoss,
         fleeChance: rare?.flee || (bossRank?.rareBoss ? bossRank.flee : 0) || 0,
         boss:isBoss, level:elv, hp, maxHp:hp,
         maxAp:base.ap+Math.floor(elv*.25), ap:Math.floor((base.ap+Math.floor(elv*.25))*.35),
