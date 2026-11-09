@@ -5171,17 +5171,17 @@ SPECIAL_RECRUITS.forEach(sp=>{
       ['終末の','虚無の','天界の','神速の','無限の','星喰いの']
     ];
     const RARE_ENEMY_TABLE = [
-      {rank:'天虹レア敵', chance:1/10000000, prefix:'天極メタル', emoji:'🌈', mult:350000, def:100, agi:100, hp:.08, flee:.21},
-      {rank:'超天レア敵', chance:1/3000000, prefix:'超天メタル', emoji:'☄️', mult:180000, def:90, agi:90, hp:.09, flee:.19},
-      {rank:'天レア敵', chance:1/1000000, prefix:'天虹メタル', emoji:'🌠', mult:100000, def:80, agi:80, hp:.10, flee:.18},
-      {rank:'極神レア敵', chance:1/300000, prefix:'極神メタル', emoji:'🏆', mult:70000, def:72, agi:72, hp:.104, flee:.17},
-      {rank:'超神レア敵', chance:1/100000, prefix:'神虹メタル', emoji:'⚜️', mult:45000, def:64, agi:64, hp:.108, flee:.162},
-      {rank:'神レア敵', chance:1/30000, prefix:'神金メタル', emoji:'🔱', mult:25000, def:55, agi:55, hp:.12, flee:.15},
-      {rank:'超極レア敵', chance:1/10000, prefix:'黒金メタル', emoji:'💫', mult:13000, def:49, agi:49, hp:.13, flee:.14},
-      {rank:'極レア敵', chance:1/3000, prefix:'白金メタル', emoji:'✨', mult:7000, def:43, agi:43, hp:.145, flee:.13},
-      {rank:'超激レア敵', chance:1/1000, prefix:'虹メタル', emoji:'🌟', mult:2500, def:35, agi:35, hp:.16, flee:.12},
-      {rank:'激レア敵', chance:1/300, prefix:'金メタル', emoji:'💠', mult:500, def:24, agi:24, hp:.20, flee:.09},
-      {rank:'レア敵', chance:1/100, prefix:'銀メタル', emoji:'💎', mult:80, def:14, agi:14, hp:.28, flee:.06}
+      {rank:'天虹レア敵', chance:1/10000000, prefix:'天極メタル', emoji:'🌈', mult:350000, def:100, agi:100, hp:.5, flee:.21},
+      {rank:'超天レア敵', chance:1/3000000, prefix:'超天メタル', emoji:'☄️', mult:180000, def:90, agi:90, hp:.55, flee:.19},
+      {rank:'天レア敵', chance:1/1000000, prefix:'天虹メタル', emoji:'🌠', mult:100000, def:80, agi:80, hp:.6, flee:.18},
+      {rank:'極神レア敵', chance:1/300000, prefix:'極神メタル', emoji:'🏆', mult:70000, def:72, agi:72, hp:.62, flee:.17},
+      {rank:'超神レア敵', chance:1/100000, prefix:'神虹メタル', emoji:'⚜️', mult:45000, def:64, agi:64, hp:.64, flee:.162},
+      {rank:'神レア敵', chance:1/30000, prefix:'神金メタル', emoji:'🔱', mult:25000, def:55, agi:55, hp:.7, flee:.15},
+      {rank:'超極レア敵', chance:1/10000, prefix:'黒金メタル', emoji:'💫', mult:13000, def:49, agi:49, hp:.75, flee:.14},
+      {rank:'極レア敵', chance:1/3000, prefix:'白金メタル', emoji:'✨', mult:7000, def:43, agi:43, hp:.825, flee:.13},
+      {rank:'超激レア敵', chance:1/1000, prefix:'虹メタル', emoji:'🌟', mult:2500, def:35, agi:35, hp:.9, flee:.12},
+      {rank:'激レア敵', chance:1/300, prefix:'金メタル', emoji:'💠', mult:500, def:24, agi:24, hp:1.1, flee:.09},
+      {rank:'レア敵', chance:1/100, prefix:'銀メタル', emoji:'💎', mult:80, def:14, agi:14, hp:1.5, flee:.06}
     ];
 
     const NORMAL_BOSS_RANKS = [
@@ -6090,7 +6090,8 @@ SPECIAL_RECRUITS.forEach(sp=>{
     function effectiveDefense(target){ return (target.def || 0) + (target.defBuff || 0); }
     function effectiveAttack(target){ return Math.max(0, (target.atk || 0) + (target.atkBuff || 0)); }
     function applyDefenseToDamage(raw, def){
-      if(def >= 0) return Math.max(1, Math.floor(raw - def * 1.2));
+      // 防御は「攻撃力×2」ぶん軽減。ただし硬すぎて無敵にならないよう、最低でも生の15%は通す。
+      if(def >= 0) return Math.max(1, Math.floor(Math.max(raw - def * 2.0, raw * 0.15)));
       // 防御がマイナスなら攻撃は素通りし、マイナス1につき+1%ダメージ。
       return Math.max(1, Math.floor(raw * (1 + Math.abs(def) / 100)));
     }
