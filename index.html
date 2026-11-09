@@ -2510,18 +2510,38 @@ SPECIAL_RECRUITS.forEach(sp=>{
       const counts={};
       list.forEach(ch=>{ counts[ch.speciesId]=(counts[ch.speciesId]||0)+1; ch.colorVariant=counts[ch.speciesId]; });
     }
+    // 【修正】生成された生き物は id が毎回変わる（例：insect_s1712345678）ため、
+    //   「同じ種族かどうか」は元の種族名(baseName)で判定する。
+    //   これまでは id 比較だったので、同じ蛾を2匹仲間にしても両方パターン1になっていた。
+    function rosterVariantKey(ch){
+      if(!ch) return '';
+      let sp = null;
+      try { sp = ch.speciesId ? speciesById(ch.speciesId) : null; } catch(e){ sp = null; }
+      return ch.baseName || (sp && (sp.baseName || sp.name)) || ch.speciesName || ch.speciesId || '';
+    }
     function ensureRosterColorVariants(){
       if(!state) return;
-      const counts={};
-      [...(state.party||[]), ...(state.storage||[])].forEach(ch=>{
-        if(ch.colorVariant) counts[ch.speciesId]=Math.max(counts[ch.speciesId]||0, Number(ch.colorVariant)||1);
-        else { counts[ch.speciesId]=(counts[ch.speciesId]||0)+1; ch.colorVariant=counts[ch.speciesId]; }
+      const all=[...(state.party||[]), ...(state.storage||[])];
+      const seen={};      // key -> Set(使用中のパターン番号)
+      const pending=[];   // 未設定 or 重複している子
+      all.forEach(ch=>{
+        const k=rosterVariantKey(ch);
+        if(!seen[k]) seen[k]=new Set();
+        const v=Number(ch.colorVariant)||0;
+        if(!v || seen[k].has(v)) { pending.push({ch,k}); return; }
+        seen[k].add(v);
+      });
+      pending.forEach(({ch,k})=>{
+        let v=1; while(seen[k].has(v)) v++;
+        ch.colorVariant=v; seen[k].add(v);
       });
     }
     function nextColorVariantForSpecies(speciesId){
       if(!state) return 1;
+      let key = speciesId;
+      try { const sp = speciesId ? speciesById(speciesId) : null; if(sp) key = sp.baseName || sp.name; } catch(e){}
       const all=[...(state.party||[]), ...(state.storage||[])];
-      const used = new Set(all.filter(ch=>ch.speciesId===speciesId).map(ch=>Math.max(1, Number(ch.colorVariant||1))));
+      const used = new Set(all.filter(ch=>rosterVariantKey(ch)===key).map(ch=>Math.max(1, Number(ch.colorVariant||1))));
       let v=1;
       while(used.has(v)) v++;
       return v;
@@ -3104,7 +3124,17 @@ SPECIAL_RECRUITS.forEach(sp=>{
       // プレイヤーが名前をつける（つけなければ純粋名のまま）。ここで魂が宿る。
       const given = await askName(pureName);
       const name = (given && given.trim()) ? given.trim() : pureName;
-      const ch=makeAlly(name, sp, 1); ch.gender='男'; ch.colorVariant=enemy.colorVariant || nextColorVariantForSpecies(sp.id); ch.auto=true;
+      const ch=makeAlly(name, sp, 1); ch.gender='男';
+      // 【修正】すでに同じ種族が同じパターンで仲間にいるときは、空いているパターンにする
+      {
+        const key = sp.baseName || sp.name;
+        const used = new Set([...(state.party||[]), ...(state.storage||[])]
+          .filter(c=>rosterVariantKey(c)===key).map(c=>Math.max(1, Number(c.colorVariant)||1)));
+        let cv = Math.max(1, Number(enemy.colorVariant)||1);
+        if(used.has(cv)) cv = nextColorVariantForSpecies(sp.id);
+        ch.colorVariant = cv;
+      }
+      ch.auto=true;
       unlockAllyCatalog(ch);
       // パーティ上限チェック
       if(state.party.length >= state.partyLimit){
@@ -5068,6 +5098,25 @@ SPECIAL_RECRUITS.forEach(sp=>{
     // 【修正】野生エンカウントで使う生成カテゴリを生き物だけに限定
     const WILD_PROC_CATEGORIES = ['動物','獣','鳥','魚','虫','生物','神話','神話生物','神話生物2','妖怪'];
 
+    // 【修正】同じ種闘に同じ種族が複数並んだとき、パターン番号が重複しないように割り当て直す
+    function dedupeEnemyColorVariants(list){
+      try {
+        const roster = [...(state.party||[]), ...(state.storage||[])];
+        const taken = {};
+        (list||[]).forEach(e=>{
+          if(!e || !e.speciesId) return;
+          let key = e.speciesId;
+          try { const sp = speciesById(e.speciesId); if(sp) key = sp.baseName || sp.name; } catch(err){}
+          if(!taken[key]){
+            taken[key] = new Set(roster.filter(c=>rosterVariantKey(c)===key).map(c=>Math.max(1, Number(c.colorVariant)||1)));
+          }
+          let v = Math.max(1, Number(e.colorVariant)||1);
+          while(taken[key].has(v)) v++;
+          e.colorVariant = v;
+          taken[key].add(v);
+        });
+      } catch(err){}
+    }
     function nextEnemy(){
       const map = dungeon.map || MAPS[0];
       const isBoss = Math.random() < map.bossChance || dungeon.stage === map.floors-1 && Math.random()<0.12;
@@ -5092,6 +5141,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
           dungeon.enemies.push(generateProceduralEnemy(map,isBoss));
         }
       }
+      dedupeEnemyColorVariants(dungeon.enemies);
       dungeon.targetEnemyIndex=0;
       dungeon.enemies.forEach(registerEnemySeen);
       syncPrimaryEnemy();
