@@ -4884,12 +4884,14 @@ SPECIAL_RECRUITS.forEach(sp=>{
       doubleChance: Math.min(Math.max(0,i-2)*0.02, 0.32)
     }));
     function partyMinLevel(){ return state?.party?.length ? Math.min(...state.party.map(ch=>ch.level||1)) : 1; }
+    // 【変更】マップ解禁の判定に使うレベル：全員そろってではなく「だれか1人」が到達すれば解放
+    function partyMaxLevel(){ return state?.party?.length ? Math.max(...state.party.map(ch=>ch.level||1)) : 1; }
     function updateUnlockedMaps(){
       if(!state) return;
       if(!Array.isArray(state.unlockedMaps)) state.unlockedMaps = [0];
-      const minLv = partyMinLevel();
+      const reachLv = partyMaxLevel(); // 「だれか1人」のレベルで判定（以前は全員=最小レベル）
       MAPS.forEach(map=>{
-        if(minLv >= map.unlock && !state.unlockedMaps.includes(map.id)){
+        if(reachLv >= map.unlock && !state.unlockedMaps.includes(map.id)){
           state.unlockedMaps.push(map.id);
           if(map.id !== 0) addChat('good', `システム：新マップ「${map.name}」が解禁されました！ 一度解禁したので、今後はいつでも行けます。`);
         }
@@ -4911,7 +4913,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
         const open=unlockedMap(map);
         const extra = open
           ? `${map.floors}階 / 最大${map.maxEnemies}匹 / ボス出現あり / 解禁済み`
-          : `次のマップ：全員レベル${map.unlock}で解禁`;
+          : `次のマップ：だれかがレベル${map.unlock}になると解禁`;
         return `<div class="place"><div class="picon">${map.icon}</div><div><b>${map.name}</b><small>${extra}</small></div><button class="btn ${open?'green':''}" data-map="${map.id}" ${open?'':'disabled'}>${open?'出発':'未解禁'}</button></div>`;
       }).join('');
       box.querySelectorAll('[data-map]').forEach(btn=>btn.onclick=()=>startDungeon(Number(btn.dataset.map)));
