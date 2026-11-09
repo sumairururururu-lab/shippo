@@ -1473,9 +1473,11 @@ SPECIAL_RECRUITS.forEach(sp=>{
         return false;
       }
       try {
+        // 【修正】先に currentSlot を切り替える。読み込み処理中の自動セーブが
+        //   直前に遊んでいた別スロットを上書きしてしまうのを防ぐ。
+        currentSlot = slotNum;
         const ok = applyLoadedData(slot.data, true);
         if(ok) {
-          currentSlot = slotNum;
           addChat('good', `システム：スロット${slotNum}から「${slot.name}」（Lv.${slot.level}）をロードしました！`);
         }
         return ok;
@@ -1820,6 +1822,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
       state = data.state;
       if(!Array.isArray(state.customSpecies)) state.customSpecies = [];
       restoreCustomSpecies();
+      ensureCatalog();
       if(!Array.isArray(state.party) || !state.party.length) state.party = [state.player];
       if(typeof state.money !== 'number') state.money = 0;
       if(typeof state.enemyLevel !== 'number') state.enemyLevel = 0;
@@ -1859,6 +1862,8 @@ SPECIAL_RECRUITS.forEach(sp=>{
         ch.auto = ch !== state.player;
       });
       ensureRosterColorVariants();
+      // 旧バージョンの共通図鑑データを、このセーブへ1回だけ引き継ぐ
+      migrateLegacyCatalogOnce().then(()=>{ try { renderCatalogs(); saveGame(); } catch(e){} });
       dungeon = null;
       busy = false;
       normalizeParty();
@@ -1875,6 +1880,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
     function loadGame(){
       try {
         const data = readSaveData();
+        currentSlot = 0; // 読み込み中は特定スロットへ自動保存しない
         return applyLoadedData(data, true);
       } catch(e) {
         console.warn('ロードできませんでした', e);
@@ -1891,6 +1897,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
         if(code.startsWith('#save=')) code = code.slice(6);
         if(code.startsWith('save=')) code = code.slice(5);
         const data = decodeSaveText(code);
+        currentSlot = 0;
         return applyLoadedData(data, true);
       } catch(e) {
         console.warn('セーブコードを読み込めませんでした', e);
@@ -1931,6 +1938,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
         if(code.startsWith('#save2=')) code = code.slice(7);
         if(code.startsWith('#save=')) code = code.slice(6);
         const data = decodeSaveText(code);
+        currentSlot = 0;
         if(data && applyLoadedData(data, true)){
           if(msg) msg.textContent = '✅ 復元しました！続きから遊べます。';
           startPlayTimer();
@@ -3407,33 +3415,60 @@ SPECIAL_RECRUITS.forEach(sp=>{
       });
     }
     function ensureCatalog(){
-      // IndexedDB版：互換性のため空オブジェクトも残す
+      // 【変更】図鑑はセーブデータの中に持つ（セーブごとに別々）
       if(!state.catalog) state.catalog={allies:{}, enemies:{}};
+      if(!state.catalog.allies) state.catalog.allies={};
+      if(!state.catalog.enemies) state.catalog.enemies={};
+      return state.catalog;
+    }
+    function catalogStore(kind){ const c=ensureCatalog(); return c[kind]; }
+    function catalogGet(kind, key){ return catalogStore(kind)[key] || null; }
+    function catalogPut(kind, key, entry){ catalogStore(kind)[key]=entry; return entry; }
+    function catalogAll(kind){ return Object.values(catalogStore(kind)||{}); }
+
+    // 以前のバージョンは図鑑をIndexedDB（全セーブ共通）に保存していた。
+    // その記録を、このアップデート後に最初に読み込んだセーブへ1回だけ移す。
+    const CATALOG_MIGRATED_KEY = 'shippo_catalog_migrated_v1';
+    async function migrateLegacyCatalogOnce(){
+      try{
+        if(!state) return 0;
+        if(localStorage.getItem(CATALOG_MIGRATED_KEY)) return 0;
+        const oldAllies = await idbGetAll('allies');
+        const oldEnemies = await idbGetAll('enemies');
+        let moved = 0;
+        (oldAllies||[]).forEach(a=>{ if(a && a.id && !catalogGet('allies', a.id)){ catalogPut('allies', a.id, a); moved++; } });
+        (oldEnemies||[]).forEach(en=>{ if(en && en.key && !catalogGet('enemies', en.key)){ catalogPut('enemies', en.key, en); moved++; } });
+        localStorage.setItem(CATALOG_MIGRATED_KEY, String(Date.now()));
+        if(moved) addChat('system', `システム：これまでの図鑑データ（${moved}件）をこのセーブに引き継ぎました。次回からはセーブごとに別々に記録されます。`);
+        return moved;
+      }catch(e){ return 0; }
     }
     function statLineFromBase(base){ return `体${base.hp}/行${base.ap}/攻${base.atk}/命${base.hit}/素${base.agi}/防${base.def}`; }
     async function unlockAllyCatalog(ch){
-      if(!state) return;
+      if(!state || !ch) return;
       const sp=speciesById(ch.speciesId);
+      if(!sp) return;
       const key=sp.id;
-      let entry = await idbGet('allies', key);
+      let entry = catalogGet('allies', key);
       if(!entry){
         entry = {id:key, icon:sp.emoji, name:sp.name, role:sp.role, skill:sp.skill, skillDesc:sp.desc, desc:characterFlavor(sp), base:{...sp.base}, count:0, farewell:0};
       }
       if(typeof entry.farewell !== 'number') entry.farewell = 0;
       entry.count++;
-      await idbPut('allies', entry);
+      catalogPut('allies', key, entry);
     }
     async function registerAllyFarewell(ch){
-      if(!state) return;
+      if(!state || !ch) return;
       const sp=speciesById(ch.speciesId);
+      if(!sp) return;
       const key=sp.id;
-      let entry = await idbGet('allies', key);
+      let entry = catalogGet('allies', key);
       if(!entry){
         entry = {id:key, icon:sp.emoji, name:sp.name, role:sp.role, skill:sp.skill, skillDesc:sp.desc, desc:characterFlavor(sp), base:{...sp.base}, count:0, farewell:0};
       }
       if(typeof entry.farewell !== 'number') entry.farewell = 0;
       entry.farewell++;
-      await idbPut('allies', entry);
+      catalogPut('allies', key, entry);
     }
     function enemyCategory(e){
       const k = recruitKindOf(e);
@@ -3479,26 +3514,26 @@ SPECIAL_RECRUITS.forEach(sp=>{
     async function registerEnemySeen(e){
       if(!state||!e) return;
       const key=e.name;
-      let entry = await idbGet('enemies', key);
+      let entry = catalogGet('enemies', key);
       if(!entry){
         entry={key:key, name:e.name, icon:e.emoji, category:enemyCategory(e), recruitable:!!e.recruitable, speciesId:e.speciesId||'', speciesName:e.speciesName||'', generated:!!e.generated, rareRank:e.rareRank||'', bossRank:e.bossRank||'', baseRoot:e.baseRoot||'', prefix:e.prefix||'', baseType:e.baseType||'', base:{hp:e.maxHp, ap:e.maxAp, atk:e.baseAtk??e.atk, hit:e.baseHit??e.hit, agi:e.baseAgi??e.agi, def:e.baseDef??e.def}, exp:e.exp||0, money:e.money||0, desc:enemyDescription(e), seen:0, defeated:0};
       }
       entry.seen++;
-      await idbPut('enemies', entry);
+      catalogPut('enemies', key, entry);
     }
     async function registerEnemyDefeated(e){
       if(!state||!e||e.escaped) return;
       const key=e.name;
-      let entry = await idbGet('enemies', key);
-      if(!entry){ await registerEnemySeen(e); entry = await idbGet('enemies', key); }
-      if(entry){ entry.defeated++; await idbPut('enemies', entry); }
+      let entry = catalogGet('enemies', key);
+      if(!entry){ await registerEnemySeen(e); entry = catalogGet('enemies', key); }
+      if(entry){ entry.defeated++; catalogPut('enemies', key, entry); }
     }
     async function renderAllyCatalog(){
       const box=$('allyCatalog'); if(!box||!state) return;
-      const list=(await idbGetAll('allies')).sort((a,b)=>a.name.localeCompare(b.name,'ja'));
-      const count = await idbCount('allies');
+      const list=catalogAll('allies').filter(a=>a&&a.id).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ja'));
+      const count = list.length;
       if(!list.length){ box.innerHTML='<div class="catalog-empty">まだ図鑑に登録された仲間はいません。<br>（現在 ${count} 体登録）</div>'; return; }
-      box.innerHTML=`<div style="text-align:center;margin-bottom:8px;color:var(--muted);">📖 図鑑：${count} 体登録</div>` + list.map(a=>{ const sp=speciesById(a.id); const flavorText=a.desc && !a.desc.includes('単体') && !a.desc.includes('味方') && !a.desc.includes('敵') ? a.desc : characterFlavor(sp); const skillDesc=a.skillDesc || sp.desc || ''; return `<div class="catalog-entry"><div class="cicon">${a.icon}</div><div><b>${a.name}</b><small>${a.role}<br>キャラ説明：${flavorText}<br>初期特技：${a.skill}${skillDesc?`（${skillDesc}）`:''}<br>初期ステータス：${statLineFromBase(a.base)}<br>仲間にした数：${a.count} / 別れた数：${a.farewell||0}</small></div></div>`; }).join('');
+      box.innerHTML=`<div style="text-align:center;margin-bottom:8px;color:var(--muted);">📖 図鑑：${count} 体登録</div>` + list.map(a=>{ const sp=speciesById(a.id); const flavorText=(a.desc && !a.desc.includes('単体') && !a.desc.includes('味方') && !a.desc.includes('敵')) ? a.desc : (sp ? characterFlavor(sp) : '記録のみ'); const skillDesc=a.skillDesc || (sp ? sp.desc : '') || ''; return `<div class="catalog-entry"><div class="cicon">${a.icon}</div><div><b>${a.name}</b><small>${a.role}<br>キャラ説明：${flavorText}<br>初期特技：${a.skill}${skillDesc?`（${skillDesc}）`:''}<br>初期ステータス：${statLineFromBase(a.base)}<br>仲間にした数：${a.count} / 別れた数：${a.farewell||0}</small></div></div>`; }).join('');
     }
     function catalogBaseRoot(entry){
       if(entry.recruitable) return entry.speciesName || entry.name;
@@ -3521,7 +3556,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
         rare:'レア敵キャラ',
         boss:'ボス敵キャラ'
       };
-      const entries=await idbGetAll('enemies');
+      const entries=catalogAll('enemies').filter(e=>e&&e.key);
       box.innerHTML=Object.entries(groups).map(([cat,title])=>{
         const list=entries.filter(e=>e.category===cat).sort((a,b)=>a.name.localeCompare(b.name,'ja'));
         if(!list.length) return `<div class="catalog-group-title">${title}</div><div class="catalog-empty">まだ登録なし</div>`;
