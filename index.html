@@ -3226,7 +3226,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
 
     /* ===== 仲間化の確率（ここを変えるだけで調整できる） =====
        野生の生き物はこれまでどおり。通常の敵・レア敵・ボスはごく低確率。 */
-    const RECRUIT_RATES = { wild: 0.12, normal: 0.04, rare: 0.03, boss: 0.01 };
+    const RECRUIT_RATES = { wild: 0.05, normal: 0.02, rare: 0.01, boss: 0.005 };
     const RECRUIT_KIND_LABEL = { wild:'野生の生き物', normal:'通常の敵', rare:'レア敵', boss:'ボス' };
     function recruitKindOf(e){
       if(!e) return 'normal';
