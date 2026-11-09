@@ -5499,9 +5499,13 @@ SPECIAL_RECRUITS.forEach(sp=>{
       const map = dungeon.map || MAPS[0];
       const isBoss = Math.random() < map.bossChance || dungeon.stage === map.floors-1 && Math.random()<0.12;
       const enemyCap = Math.min(map.maxEnemies, state.enemyLimit || 1);
-      const count = isBoss ? 1 : weightedEnemyCount(enemyCap);
+      // 【変更】ボスのときも複数で出現する（ボスは1体だけ混ざる）
+      const count = weightedEnemyCount(enemyCap);
       dungeon.enemies=[];
-      const animalAppears = !isBoss && Math.random() < Math.min(0.14 + map.id*0.01, 0.32);
+      // ボス1体だけのときは野生動物を出さない（ボスが消えてしまうため）
+      const animalAppears = !(isBoss && count===1) && Math.random() < Math.min(0.14 + map.id*0.01, 0.32);
+      // ボスは基本的に先頭。先頭が野生動物のときは最後に回す
+      const bossIndex = isBoss ? (animalAppears ? count-1 : 0) : -1;
       for(let i=0;i<count;i++){
         if(animalAppears && i===0){
           let sp;
@@ -5516,7 +5520,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
           }
           dungeon.enemies.push(createAnimalEnemy(sp,map));
         } else {
-          dungeon.enemies.push(generateProceduralEnemy(map,isBoss));
+          dungeon.enemies.push(generateProceduralEnemy(map, i===bossIndex));
         }
       }
       dedupeEnemyColorVariants(dungeon.enemies);
