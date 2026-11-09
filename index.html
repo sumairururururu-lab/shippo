@@ -3292,7 +3292,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
     function recruitKindOf(e){
       if(!e) return 'normal';
       if(e.recruitKind) return e.recruitKind;
-      if(e.boss) return 'boss';
+      if(e.boss || e.bossRank) return 'boss';
       if(e.rareRank) return 'rare';
       if(e.recruitable && e.speciesId) return 'wild';
       return 'normal';
@@ -3605,7 +3605,9 @@ SPECIAL_RECRUITS.forEach(sp=>{
     }
     function catalogEnemyDescription(entry){
       if(!entry) return '';
-      if(entry.desc && !entry.desc.includes('自動生成された敵。マップが進むほど強い個体が出る。')) return entry.desc;
+      // 【修正】保存済みの説明文に古い確率（例：「（0%）」）が残っている場合は作り直す
+      const stale = typeof entry.desc === 'string' && /仲間になってくれる（[^）]*）/.test(entry.desc);
+      if(entry.desc && !stale && !entry.desc.includes('自動生成された敵。マップが進むほど強い個体が出る。')) return entry.desc;
       return enemyDescription(entry);
     }
 
@@ -3617,6 +3619,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
         entry={key:key, name:e.name, icon:e.emoji, category:enemyCategory(e), recruitable:!!e.recruitable, recruitKind:recruitKindOf(e), speciesId:e.speciesId||'', speciesName:e.speciesName||'', generated:!!e.generated, rareRank:e.rareRank||'', bossRank:e.bossRank||'', baseRoot:e.baseRoot||'', prefix:e.prefix||'', baseType:e.baseType||'', base:{hp:e.maxHp, ap:e.maxAp, atk:e.baseAtk??e.atk, hit:e.baseHit??e.hit, agi:e.baseAgi??e.agi, def:e.baseDef??e.def}, exp:e.exp||0, money:e.money||0, desc:enemyDescription(e), seen:0, defeated:0};
       }
       entry.seen++;
+      try { if(entry.recruitable) entry.desc = enemyDescription(e); } catch(err){}
       catalogPut('enemies', key, entry);
     }
     async function registerEnemyDefeated(e){
