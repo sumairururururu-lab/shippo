@@ -1291,14 +1291,32 @@ SPECIAL_RECRUITS.forEach(sp=>{
       if(Array.isArray(wnSlots)&&wnSlots.length){ _memSaveSlots=wnSlots; return wnSlots; }
       return Array.isArray(_memSaveSlots)?_memSaveSlots:[];
     }
-    function setSaveSlots(slots){
-      _memSaveSlots=slots;
+    // 【軽量化】重い保存先（IndexedDB・Cache・URLハッシュ・window.name・親）は10秒に1回だけ書き込む
+    let _lastHeavySlotsWrite = 0;
+    const HEAVY_SLOTS_INTERVAL_MS = 10000;
+    function writeSlotsHeavy(slots){
       writeSlotsToCache(slots);
       postSaveToParent(slots);
       writeSlotsToIDB(slots);
       writeSlotsToParent(slots);
-      writeSlotsToHash(slots);
       writeSlotsToWindowName(slots);
+      // URLハッシュへの保存は localStorage が使えない環境の救済用（毎回やるとURLが数十万文字になる）
+      let canStore = false;
+      try { canStore = storageAvailable(); } catch(e){ canStore = false; }
+      if(!canStore) writeSlotsToHash(slots);
+    }
+    function flushSlotsToAll(){
+      try { if(_memSaveSlots) writeSlotsHeavy(_memSaveSlots); } catch(e){}
+    }
+    function setSaveSlots(slots){
+      _memSaveSlots=slots;
+      try {
+        const now = Date.now();
+        if(now - _lastHeavySlotsWrite > HEAVY_SLOTS_INTERVAL_MS){
+          _lastHeavySlotsWrite = now;
+          writeSlotsHeavy(slots);
+        }
+      } catch(e){}
       try { localStorage.setItem(SAVE_SLOTS_KEY, JSON.stringify(slots)); } catch(e){}
       try { sessionStorage.setItem(SAVE_SLOTS_KEY, JSON.stringify(slots)); } catch(e){}
     }
@@ -1308,8 +1326,8 @@ SPECIAL_RECRUITS.forEach(sp=>{
     }
     // リロード直前にも全保存先へ書き込む保険
     try {
-      window.addEventListener('pagehide', function(){ try{ if(_memSaveSlots) setSaveSlots(_memSaveSlots); }catch(e){} });
-      window.addEventListener('beforeunload', function(){ try{ if(_memSaveSlots) setSaveSlots(_memSaveSlots); }catch(e){} });
+      window.addEventListener('pagehide', function(){ flushSlotsToAll(); flushPendingSave(); });
+      window.addEventListener('beforeunload', function(){ flushSlotsToAll(); flushPendingSave(); });
     } catch(e){}
     // Cache Storage に保存（まだ試していない保存先）
     async function writeSlotsToCache(slots){
@@ -1883,7 +1901,29 @@ SPECIAL_RECRUITS.forEach(sp=>{
       renderSaveSlots();
     }
 
+    // 【軽量化】短時間に何度も呼ばれても、実際の書き込みはまとめて1回にする
+    let _lastSaveAt = 0, _saveTimer = null;
+    const SAVE_COALESCE_MS = 500;
     function saveGame(){
+      if(!state) return true;
+      const now = Date.now();
+      if(now - _lastSaveAt < SAVE_COALESCE_MS){
+        if(!_saveTimer){
+          _saveTimer = setTimeout(()=>{ _saveTimer=null; try{ saveGameNow(); }catch(e){} }, SAVE_COALESCE_MS+20);
+        }
+        return true;
+      }
+      _lastSaveAt = now;
+      return saveGameNow();
+    }
+    // ページを閉じる直前に、まとめ待ちのセーブがあれば今すぐ書き込む
+    function flushPendingSave(){
+      try {
+        if(_saveTimer){ clearTimeout(_saveTimer); _saveTimer=null; }
+        if(state){ _lastSaveAt = Date.now(); saveGameNow(); }
+      } catch(e){}
+    }
+    function saveGameNow(){
       if(!state) return;
       try{ logAction('セーブ実行','saveGame'); }catch(e){}
       try { normalizeParty(); } catch(e) {}
@@ -2221,7 +2261,12 @@ SPECIAL_RECRUITS.forEach(sp=>{
         if(ACTION_LOG.length > 500) ACTION_LOG.shift();
         const box = document.getElementById('actionLogBox');
         if(box){ box.value = ACTION_LOG.join('\n'); box.scrollTop = box.scrollHeight; }
-        persistActionLog();   // 記録するたびに永久保存
+        // 【軽量化】保存は3秒に1回まで（画面には即反映）
+        const nowMs = Date.now();
+        if(!logAction._lastPersist || nowMs - logAction._lastPersist > 3000){
+          logAction._lastPersist = nowMs;
+          persistActionLog();
+        }
       } catch(e){}
     }
     // クリックを全部自動記録（ボタン名・id）
@@ -3813,7 +3858,30 @@ SPECIAL_RECRUITS.forEach(sp=>{
       }).join('');
     }
 
-    async function renderCatalogs(){ await renderAllyCatalog(); await renderEnemyCatalog(); }
+    // 【軽量化】図鑑は「開いているとき」だけ描画する（閉じているのに毎回作ると重い）
+    function catalogDetailsOpen(which){
+      try {
+        const box = which==='ally' ? $('allyCatalog') : $('enemyCatalog');
+        if(!box) return false;
+        const d = box.closest('details');
+        return !!(d && d.open);
+      } catch(e){ return false; }
+    }
+    async function renderCatalogs(force){
+      if(force || catalogDetailsOpen('ally')) await renderAllyCatalog();
+      if(force || catalogDetailsOpen('enemy')) await renderEnemyCatalog();
+    }
+    // 図鑑を開いたときに描画する
+    try {
+      document.addEventListener('toggle', function(ev){
+        try {
+          const d = ev.target;
+          if(!d || d.tagName !== 'DETAILS' || !d.open) return;
+          if(d.querySelector('#allyCatalog')) renderAllyCatalog();
+          if(d.querySelector('#enemyCatalog')) renderEnemyCatalog();
+        } catch(e){}
+      }, true);
+    } catch(e){}
 
     function renderAll(){
       if(!state)return;
@@ -6136,8 +6204,11 @@ SPECIAL_RECRUITS.forEach(sp=>{
         p.textContent=text;
       }
       log.appendChild(p);
+      // 【軽量化】ログが増えすぎると重くなるので150行までにする
+      while(log.childElementCount > 150) log.removeChild(log.firstElementChild);
       log.scrollTop=log.scrollHeight;
     }
+    const LOG_MAX_LINES = 150;
 
     function logBattleHtml(type, html, extraClass=''){
       const log=$('battleLog');
@@ -6145,6 +6216,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
       p.className=(type||'') + (extraClass ? ' ' + extraClass : '');
       p.innerHTML=html;
       log.appendChild(p);
+      while(log.childElementCount > 150) log.removeChild(log.firstElementChild);
       log.scrollTop=log.scrollHeight;
     }
     function multiplierExcitement(power, minP, maxP){
