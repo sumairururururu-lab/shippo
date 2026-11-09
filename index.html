@@ -1168,6 +1168,18 @@ SPECIAL_RECRUITS.forEach(sp=>{
     const EVOLUTION_BASE_LEVELS = {1:50, 2:120, 3:300, 4:700, 5:1200, 6:2000, 7:3200, 8:5000, 9:8000};
     const EVOLUTION_PREFIX = {3:'真', 4:'極', 5:'超極', 6:'神', 7:'超神', 8:'超極神', 9:'天'};
     const EVOLUTION_LABEL = {1:'第一進化', 2:'第二進化', 3:'第三進化', 4:'第四進化', 5:'第五進化', 6:'第六進化', 7:'第七進化', 8:'第八進化', 9:'第九進化'};
+    // 【追加】進化データがない種族（生成された生き物・通常の敵の仲間など）にも自動で進化先を作る
+    function ensureEvolveEntry(id, spHint){
+      if(!id) return null;
+      let sp = spHint || null;
+      if(!sp){ try { sp = speciesExists(id) ? speciesById(id) : null; } catch(e){ sp = null; } }
+      const base = (sp && (sp.baseName || sp.name)) || 'なぞの種族';
+      const emoji = (sp && sp.emoji) || '✨';
+      const skill = (sp && sp.skill) || 'とくぎ';
+      if(!evolveMap[id]) evolveMap[id] = [`上位${base}`, emoji, `${skill}改`];
+      if(!SECOND_EVOLVE_NAMES[id]) SECOND_EVOLVE_NAMES[id] = `真${base}`;
+      return evolveMap[id];
+    }
     function evolutionStage(ch){ return ch.evolutionStage || (ch.evolved ? 1 : 0); }
     function finalEvolutionBaseName(ch){ return SECOND_EVOLVE_NAMES[ch.speciesId] || evolveMap[ch.speciesId]?.[0] || ch.speciesName; }
     function evolutionName(ch, stage){
@@ -1185,7 +1197,12 @@ SPECIAL_RECRUITS.forEach(sp=>{
       if(next > 9) return null;
       return {stage: next, level: evolutionThreshold(ch, next), label: EVOLUTION_LABEL[next]};
     }
-    function canEvolve(ch){ if(!evolveMap[ch.speciesId]) return false; const n = nextEvolutionStage(ch); return !!n && ch.level >= n.level; }
+    function canEvolve(ch){
+      if(!ch) return false;
+      ensureEvolveEntry(ch.speciesId); // 進化データが無ければ作る
+      const n = nextEvolutionStage(ch);
+      return !!n && ch.level >= n.level;
+    }
 
 
     let selected = species[0];
@@ -1865,6 +1882,8 @@ SPECIAL_RECRUITS.forEach(sp=>{
         ch.auto = ch !== state.player;
       });
       ensureRosterColorVariants();
+      // 【追加】手持ち全員の進化データを補完（生成された生き物や通常の敵の仲間も進化できるように）
+      try { [...(state.party||[]), ...(state.storage||[])].forEach(c=>{ if(c && c.speciesId) ensureEvolveEntry(c.speciesId); }); } catch(e){}
       // 旧バージョンの共通図鑑データを、このセーブへ1回だけ引き継ぐ
       migrateLegacyCatalogOnce().then(()=>{ try { pruneLegacyCatalogEntries(); renderCatalogs(); saveGame(); } catch(e){} });
       dungeon = null;
@@ -2594,6 +2613,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
     }
 
     function makeCharacter(name, sp){
+      try { ensureEvolveEntry(sp.id, sp); } catch(e){}
       const ch = {name:sanitizeName(name)||'ななし', speciesId:sp.id, speciesName:sp.name, emoji:sp.emoji, role:sp.role, gender:'男', colorVariant:1, base:{...sp.base}, growth:{hp:10, ap:0, atk:0, hit:0, agi:0, def:0}, extraTechs:[], level:1, exp:0, hp:1, ap:0, atkBuff:0, defBuff:0, hitBuff:0, agiBuff:0, hpBuff:0, apBuff:0, atkMult:1, defMult:1, hitMult:1, agiMult:1, hpMult:1, apMult:1, critBuff:0, tension:0, taunt:0, evolved:false, evolutionStage:0, poison:[], paralysis:0, confusion:0, blind:0, stun:0};
       ch.hp = maxHp(ch);
       ch.ap = Math.floor(maxAp(ch)*.6);
