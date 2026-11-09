@@ -3301,7 +3301,11 @@ SPECIAL_RECRUITS.forEach(sp=>{
       const r = RECRUIT_RATES[recruitKindOf(e)];
       return typeof r === 'number' ? r : 0.1;
     }
-    function recruitChanceText(kind){ return Math.round((RECRUIT_RATES[kind]||0)*100)+'%'; }
+    function recruitChanceText(kind){
+      const p = (RECRUIT_RATES[kind]||0)*100;
+      const txt = (Math.abs(p - Math.round(p)) < 0.001) ? String(Math.round(p)) : p.toFixed(1);
+      return txt + '%';
+    }
 
     /* 手続き生成の敵を、仲間にできる種族データへ変換する */
     const PROC_TYPE_PROFILE = {
@@ -3610,7 +3614,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
       const key=e.name;
       let entry = catalogGet('enemies', key);
       if(!entry){
-        entry={key:key, name:e.name, icon:e.emoji, category:enemyCategory(e), recruitable:!!e.recruitable, speciesId:e.speciesId||'', speciesName:e.speciesName||'', generated:!!e.generated, rareRank:e.rareRank||'', bossRank:e.bossRank||'', baseRoot:e.baseRoot||'', prefix:e.prefix||'', baseType:e.baseType||'', base:{hp:e.maxHp, ap:e.maxAp, atk:e.baseAtk??e.atk, hit:e.baseHit??e.hit, agi:e.baseAgi??e.agi, def:e.baseDef??e.def}, exp:e.exp||0, money:e.money||0, desc:enemyDescription(e), seen:0, defeated:0};
+        entry={key:key, name:e.name, icon:e.emoji, category:enemyCategory(e), recruitable:!!e.recruitable, recruitKind:recruitKindOf(e), speciesId:e.speciesId||'', speciesName:e.speciesName||'', generated:!!e.generated, rareRank:e.rareRank||'', bossRank:e.bossRank||'', baseRoot:e.baseRoot||'', prefix:e.prefix||'', baseType:e.baseType||'', base:{hp:e.maxHp, ap:e.maxAp, atk:e.baseAtk??e.atk, hit:e.baseHit??e.hit, agi:e.baseAgi??e.agi, def:e.baseDef??e.def}, exp:e.exp||0, money:e.money||0, desc:enemyDescription(e), seen:0, defeated:0};
       }
       entry.seen++;
       catalogPut('enemies', key, entry);
@@ -3630,7 +3634,12 @@ SPECIAL_RECRUITS.forEach(sp=>{
       box.innerHTML=`<div style="text-align:center;margin-bottom:8px;color:var(--muted);">📖 図鑑：${count} 体登録</div>` + list.map(a=>{ const sp=speciesById(a.id); const flavorText=(a.desc && !a.desc.includes('単体') && !a.desc.includes('味方') && !a.desc.includes('敵')) ? a.desc : (sp ? characterFlavor(sp) : '記録のみ'); const skillDesc=a.skillDesc || (sp ? sp.desc : '') || ''; return `<div class="catalog-entry"><div class="cicon">${a.icon}</div><div><b>${a.name}</b><small>${a.role}<br>キャラ説明：${flavorText}<br>初期特技：${a.skill}${skillDesc?`（${skillDesc}）`:''}<br>初期ステータス：${statLineFromBase(a.base)}<br>仲間にした数：${a.count} / 別れた数：${a.farewell||0}</small></div></div>`; }).join('');
     }
     function catalogBaseRoot(entry){
-      if(entry.recruitable) return entry.speciesName || entry.name;
+      if(!entry) return '';
+      // 【修正】野生の生き物（種族として仲間にできる敵）は種族名でまとめる。
+      //   通常の敵・レア敵・ボスは、⑲で「仲間候補」になったぶん recruitable が true になったため、
+      //   以前の判定だと「ころころ草ぽん」「ふわふわ草ぽん」が別グループ（各1種類）になっていた。
+      const isWild = entry.recruitKind === 'wild' || (entry.recruitable && !!entry.speciesName);
+      if(isWild) return entry.speciesName || entry.name;
       if(entry.baseRoot) return entry.baseRoot;
       try {
         const roots = (typeof PROC_ENEMY_BASES !== 'undefined') ? PROC_ENEMY_BASES.map(b=>b.root).sort((a,b)=>b.length-a.length) : [];
