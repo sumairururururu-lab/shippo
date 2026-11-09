@@ -2312,18 +2312,21 @@ SPECIAL_RECRUITS.forEach(sp=>{
       return sp ? (sp.baseName || sp.name) : ('id:'+id);
     }
 
+    // 【修正】hue-rotate だけだと、黒やグレーの絵文字（影の欠片🌑・石ころ兵🪨など）は
+    //   色が変わらず「パターン2がイエローに見えない」状態だった。
+    //   sepia(1) で色を出してから hue-rotate で色相を回し、さらに色付きの発光（drop-shadow）を足す。
     const COLOR_VARIANT_FILTERS = [
       'none',
-      'hue-rotate(55deg) saturate(1.25)',
-      'hue-rotate(120deg) saturate(1.35)',
-      'hue-rotate(190deg) saturate(1.25)',
-      'hue-rotate(260deg) saturate(1.3)',
-      'sepia(.35) saturate(1.4)',
-      'brightness(1.15) saturate(1.5)',
-      'contrast(1.2) hue-rotate(310deg)',
-      'hue-rotate(15deg) saturate(1.3)',
-      'hue-rotate(30deg) saturate(1.3)',
-      'hue-rotate(45deg) saturate(1.3)',
+      'sepia(1) saturate(3.6) hue-rotate(2deg) brightness(2.2)',
+      'sepia(1) saturate(3.2) hue-rotate(72deg) brightness(2.0)',
+      'sepia(1) saturate(3.2) hue-rotate(148deg) brightness(2.0)',
+      'sepia(1) saturate(3.2) hue-rotate(228deg) brightness(2.0)',
+      'sepia(1) saturate(1.8) brightness(1.7)',
+      'brightness(2.6) saturate(1.6)',
+      'sepia(1) saturate(3.2) hue-rotate(300deg) brightness(2.0)',
+      'sepia(1) saturate(3.6) hue-rotate(18deg) brightness(2.1)',
+      'sepia(1) saturate(3.4) hue-rotate(30deg) brightness(2.0)',
+      'sepia(1) saturate(5) hue-rotate(0deg) brightness(2.4)',
       'hue-rotate(75deg) saturate(1.25)',
       'hue-rotate(95deg) saturate(1.3)',
       'hue-rotate(140deg) saturate(1.3)',
@@ -2570,10 +2573,39 @@ SPECIAL_RECRUITS.forEach(sp=>{
       'brightness(1.05) saturate(1.2) hue-rotate(30deg)',
       'hue-rotate(310deg) saturate(1.3) brightness(1.0)'
     ];
+    // パターン2以降は、絵文字の周りに色付きの光を出して色をはっきり見せる
+    const COLOR_VARIANT_GLOWS = [
+      '',                                                        // 1 デフォルト
+      'drop-shadow(0 0 4px #ffd000) drop-shadow(0 0 8px #ffc400)', // 2 イエロー系
+      'drop-shadow(0 0 4px #37d44a) drop-shadow(0 0 8px #1fbf3a)', // 3 グリーン系
+      'drop-shadow(0 0 4px #2fd3ea) drop-shadow(0 0 8px #12b6d6)', // 4 シアン系
+      'drop-shadow(0 0 4px #a06bff) drop-shadow(0 0 8px #7d3ff0)', // 5 パープル系
+      'drop-shadow(0 0 4px #c9a227) drop-shadow(0 0 8px #a87f14)', // 6 セピア系
+      'drop-shadow(0 0 6px #ffffff) drop-shadow(0 0 10px #ffe9a8)',// 7 ブライト系
+      'drop-shadow(0 0 4px #ff6fae) drop-shadow(0 0 8px #ff3d92)', // 8 ピンク系
+      'drop-shadow(0 0 4px #ff8a2b) drop-shadow(0 0 8px #ff6a00)', // 9 オレンジ系
+      'drop-shadow(0 0 4px #ffb300) drop-shadow(0 0 8px #e69500)', // 10 アンバー系
+      'drop-shadow(0 0 5px #fff200) drop-shadow(0 0 10px #ffe000)',// 11 イエロー強
+      'drop-shadow(0 0 4px #9bd400) drop-shadow(0 0 8px #7dbb00)', // 12 ライム系
+      'drop-shadow(0 0 4px #2ecc71) drop-shadow(0 0 8px #14a75a)', // 13 グリーン強
+      'drop-shadow(0 0 4px #1abc9c) drop-shadow(0 0 8px #0e9c80)', // 14 ティール系
+      'drop-shadow(0 0 4px #56b8ff) drop-shadow(0 0 8px #2196f3)', // 15 スカイ系
+      'drop-shadow(0 0 4px #4d6bff) drop-shadow(0 0 8px #2a44e0)', // 16 ブルー強
+      'drop-shadow(0 0 4px #b06bff) drop-shadow(0 0 8px #8b3ff0)', // 17 バイオレット系
+      'drop-shadow(0 0 4px #ff5ce0) drop-shadow(0 0 8px #e020b0)', // 18 マゼンタ系
+      'drop-shadow(0 0 4px #ffd9f0) drop-shadow(0 0 8px #ffc0e0)', // 19 パステル系
+      'drop-shadow(0 0 5px #ff3b3b) drop-shadow(0 0 12px #ff0000)'  // 20 ビビッド系
+    ];
     function colorVariantStyle(ch){
       const v = Math.max(1, Number(ch?.colorVariant || 1));
-      const filter = COLOR_VARIANT_FILTERS[(v-1) % COLOR_VARIANT_FILTERS.length];
-      return filter && filter !== 'none' ? `style="filter:${filter}"` : '';
+      if(v <= 1) return '';
+      const idx = (v-1) % COLOR_VARIANT_FILTERS.length;
+      let filter = COLOR_VARIANT_FILTERS[idx] || '';
+      let glow = COLOR_VARIANT_GLOWS[(v-1) % COLOR_VARIANT_GLOWS.length] || '';
+      if(!glow) glow = COLOR_VARIANT_GLOWS[1]; // 21パターン目以降も必ず色を付ける
+      if(filter === 'none') filter = '';
+      const all = [filter, glow].filter(Boolean).join(' ').trim();
+      return all ? `style="filter:${all}"` : '';
     }
     const COLOR_VARIANT_NAMES = [
       'デフォルト', 'イエロー系', 'グリーン系', 'シアン系', 'パープル系', 'セピア系', 'ブライト系', 'ピンク系', 'オレンジ系', 'アンバー系', 'イエロー強', 'ライム系', 'グリーン強', 'ティール系', 'スカイ系', 'ブルー強', 'バイオレット系', 'マゼンタ系', 'パステル', 'ビビッド', 'ダーク', 'ライト', 'ハイコントラスト', 'ローコントラスト', 'モノクロ', '反転色', 'セピア濃', 'ゴールドセピア', '補色系', 'シャドウグリーン', 'スーパーレッド', 'パステルパープル', '赤系', '赤vivid', '赤dark', '赤light', '朱系', '朱vivid', '朱dark', '朱light', '橙系', '橙vivid', '橙dark', '橙light', '柑系', '柑vivid', '柑dark', '柑light', '黄系', '黄vivid', '黄dark', '黄light', '金系', '金vivid', '金dark', '金light', '黄緑系', '黄緑vivid', '黄緑dark', '黄緑light', '萌系', '萌vivid', '萌dark', '萌light', '緑系', '緑vivid', '緑dark', '緑light', '青緑系', '青緑vivid', '青緑dark', '青緑light', '水系', '水vivid', '水dark', '水light', '空系', '空vivid', '空dark', '空light', '青系', '青vivid', '青dark', '青light', '藍系', '藍vivid', '藍dark', '藍light', '藍紫系', '藍紫vivid', '藍紫dark', '藍紫light', '紫系', '紫vivid', '紫dark', '紫light', '紅紫系', '紅紫vivid', '紅紫dark', '紅紫light', '赤紫系', '赤紫vivid', '赤紫dark', '赤紫light', 'マゼンタ系', 'マゼンタvivid', 'マゼンタdark', 'マゼンタlight', '薔薇系', '薔薇vivid', '薔薇dark', '薔薇light', '紅系', '紅vivid', '紅dark', '紅light', '朱系', '朱vivid', '朱dark', '朱light', '朱系', '朱vivid', '朱dark', '朱light', '橙系', '橙vivid', '橙dark', '橙light', '虹色', 'ネオン', 'パステル虹', 'メタル', 'ゴシック', 'サイバー', 'ホログラム', 'ステンドグラス', 'キャンディ', 'フロスト', 'シャドウ', 'サンセット', 'オーシャン', 'フォレスト', 'デザート', 'アイス', 'ファイヤー', 'ウォーター', 'アース', 'エア', 'ゴールド', 'シルバー', 'ブロンズ', 'エメラルド', 'ルビー', 'サファイア', 'アメジスト', 'トパーズ', 'ガーネット', 'アメジスト2', 'ペリドット', 'ターコイズ', 'ラピスラズリ', 'トパーズ2', 'アクアマリン', 'ムーンストーン', 'サンストーン', 'ムーンライト', 'サンシャイン', 'トワイライト', 'ディープブルー', 'エメラルド2', 'コーラル', 'アクア', 'ライム', 'ラベンダー', 'ベージュ', 'マリンブルー', 'ナイルブルー', 'シャンパン', 'ネイビー', 'バーガンディ', 'マルーン', 'マスタード', 'インディゴ', 'カーキ', 'ターコイズ2', 'カーマイン', 'ボルドー', 'ロイヤルブルー', 'ロイヤルパープル', 'ホットピンク', 'ディープピンク', 'コーラルピンク', 'ベビーブルー', 'ベビーピンク', 'クリーム', 'ミント', 'ピンク', 'ラズベリー', 'モカ', 'ピンクゴールド', 'ローズゴールド', 'ミントグリーン', 'ライラック', 'ミントブルー', 'サクラ', 'コーヒー', 'カシス', 'ディープパープル', 'グラスグリーン', 'カクタス', '海', '深紅', '森', '夕焼け', '夜', '蛍光', 'オーロラ', '重厚', '煌めき', '漆黒', '純白', '鋼鉄', '真珠', '黒曜石', '翡翠', '翡翠濃', '珊瑚', '琥珀', '水晶', '真鍮', 'ガンメタル', 'タングステン', 'クローム', 'プラチナ', 'ルテニウム', 'ロジウム', 'パラジウム', 'イリジウム', 'オスミウム', 'ルビジウム', 'セシウム', 'バリウム', 'ラジウム', 'アクチニウム', 'プロトアクチニウム', 'ウラニウム', 'プルトニウム', 'アメリシウム', 'キュリウム', 'バークリウム', 'カリホルニウム', 'アインスタイニウム', 'フェルミウム', 'メンデレビウム', 'ノーベリウム', 'ローレンシウム'
