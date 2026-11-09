@@ -5192,17 +5192,17 @@ SPECIAL_RECRUITS.forEach(sp=>{
       {rank:'天ボス', weight:.0001, hp:140, stat:22.0, reward:1800, flee:.07}
     ];
     const RARE_BOSS_RANKS = [
-      {rank:'天レアボス', chance:1/1000000000, hp:900, stat:160, reward:25000000, flee:.25},
-      {rank:'極神レアボス', chance:1/300000000, hp:650, stat:120, reward:9000000, flee:.22},
-      {rank:'超神レアボス', chance:1/100000000, hp:460, stat:90, reward:3500000, flee:.20},
-      {rank:'神レアボス', chance:1/30000000, hp:320, stat:68, reward:1200000, flee:.18},
-      {rank:'超レア極ボス', chance:1/10000000, hp:220, stat:50, reward:450000, flee:.16},
-      {rank:'極レアボス', chance:1/3000000, hp:150, stat:38, reward:160000, flee:.14},
-      {rank:'超大レアボス', chance:1/1000000, hp:95, stat:28, reward:60000, flee:.12},
-      {rank:'超レアボス', chance:1/300000, hp:60, stat:21, reward:22000, flee:.10},
-      {rank:'大レアボス', chance:1/100000, hp:38, stat:16, reward:9000, flee:.09},
-      {rank:'レアボス', chance:1/30000, hp:24, stat:11, reward:3500, flee:.08},
-      {rank:'小レアボス', chance:1/10000, hp:15, stat:7, reward:1200, flee:.07}
+      {rank:'天レアボス', chance:1/1000000000, hp:900, stat:160, reward:25000000, flee:.25, emoji:'🌈'},
+      {rank:'極神レアボス', chance:1/300000000, hp:650, stat:120, reward:9000000, flee:.22, emoji:'☄️'},
+      {rank:'超神レアボス', chance:1/100000000, hp:460, stat:90, reward:3500000, flee:.20, emoji:'🌠'},
+      {rank:'神レアボス', chance:1/30000000, hp:320, stat:68, reward:1200000, flee:.18, emoji:'💫'},
+      {rank:'超レア極ボス', chance:1/10000000, hp:220, stat:50, reward:450000, flee:.16, emoji:'🏆'},
+      {rank:'極レアボス', chance:1/3000000, hp:150, stat:38, reward:160000, flee:.14, emoji:'⚜️'},
+      {rank:'超大レアボス', chance:1/1000000, hp:95, stat:28, reward:60000, flee:.12, emoji:'🔱'},
+      {rank:'超レアボス', chance:1/300000, hp:60, stat:21, reward:22000, flee:.10, emoji:'✨'},
+      {rank:'大レアボス', chance:1/100000, hp:38, stat:16, reward:9000, flee:.09, emoji:'🌟'},
+      {rank:'レアボス', chance:1/30000, hp:24, stat:11, reward:3500, flee:.08, emoji:'💠'},
+      {rank:'小レアボス', chance:1/10000, hp:15, stat:7, reward:1200, flee:.07, emoji:'👑'}
     ];
     function rollBossRank(){
       for(const r of RARE_BOSS_RANKS){ if(Math.random() < r.chance) return {...r, rareBoss:true}; }
@@ -5284,7 +5284,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
       const agi = Math.ceil((base.agi+Math.floor(elv*.18)+rarityAgi+bossAgi) * pm.agi * (bossRank?.rareBoss ? 1.8 : 1));
       const def = Math.ceil((base.def+Math.floor(elv*.30)+rarityDef+bossDef) * pm.def * (bossRank?.rareBoss ? 1.6 : 1));
       return {
-        name, prefix, baseRoot:base.root, baseType:base.type, emoji: rare ? (rare.emoji || '💎') : bossRank?.rareBoss ? '👑' : base.emoji, generated:true, rareRank:rare?.rank||'', bossRank:bossRank?.rank||'', rareBoss:!!bossRank?.rareBoss,
+        name, prefix, baseRoot:base.root, baseType:base.type, emoji: rare ? (rare.emoji || '💎') : bossRank?.rareBoss ? (bossRank.emoji || '👑') : base.emoji, generated:true, rareRank:rare?.rank||'', bossRank:bossRank?.rank||'', rareBoss:!!bossRank?.rareBoss,
         fleeChance: rare?.flee || (bossRank?.rareBoss ? bossRank.flee : 0) || 0,
         boss:isBoss, level:elv, hp, maxHp:hp,
         maxAp:base.ap+Math.floor(elv*.25), ap:Math.floor((base.ap+Math.floor(elv*.25))*.35),
