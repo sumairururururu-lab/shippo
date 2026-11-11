@@ -1230,6 +1230,27 @@ SPECIAL_RECRUITS.forEach(sp=>{
     const SAVE_BACKUP_KEY = 'shippoDungeonRpgSave_backups_v1';
     const SAVE_BACKUP_GENS = 3;
     const SAVE_BACKUP_INTERVAL_MS = 180000; // 3分おきに1世代残す
+    // 【軽量化】図鑑はセーブ本体とは別のキーに保存する（本体が数百KBになり動作が重くなるため）
+    const SAVE_CATALOG_PREFIX = 'shippoDungeonRpgCatalog_v1_';
+    let _pendingCatalogSlot = null;
+    function catalogStoreKeyFor(slot){ return SAVE_CATALOG_PREFIX + String(slot); }
+    function saveCatalogForSlot(slot){
+      try {
+        if(!state || !state.catalog) return;
+        localStorage.setItem(catalogStoreKeyFor(slot), JSON.stringify(state.catalog));
+      } catch(e){}
+    }
+    function loadCatalogForSlot(slot){
+      try { const raw = localStorage.getItem(catalogStoreKeyFor(slot)); return raw ? JSON.parse(raw) : null; } catch(e){ return null; }
+    }
+    // 図鑑を外した軽いセーブ（本体用）
+    function savePayload(){
+      let st;
+      try { st = Object.assign({}, state); st.catalog = null; } catch(e){ st = state; }
+      return { version: 1, savedAt: Date.now(), state: st, catalogExternal: true };
+    }
+    // 図鑑込みの完全なセーブ（コード・ファイル出力用）
+    function fullSavePayload(){ return { version: 1, savedAt: Date.now(), state: state }; }
     const SAVE_SLOTS_KEY = 'shippoDungeonRpgSave_slots_v1';
     const MAX_SLOTS = 3; // 手動セーブ用スロット数 (1〜3)
     const AUTO_SLOT = 'auto'; // 自動セーブ専用スロットID
@@ -1326,8 +1347,10 @@ SPECIAL_RECRUITS.forEach(sp=>{
     }
     // リロード直前にも全保存先へ書き込む保険
     try {
-      window.addEventListener('pagehide', function(){ flushSlotsToAll(); flushPendingSave(); });
-      window.addEventListener('beforeunload', function(){ flushSlotsToAll(); flushPendingSave(); });
+      // Android はタブが隠れた時点で落ちることがあるので、隠れたら確実に書き出す
+      document.addEventListener('visibilitychange', function(){ try{ if(document.visibilityState==='hidden'){ flushCatalogWrites(true); flushSlotsToAll(); flushPendingSave(); } }catch(e){} });
+      window.addEventListener('pagehide', function(){ try{ flushCatalogWrites(true); }catch(e){} flushSlotsToAll(); flushPendingSave(); });
+      window.addEventListener('beforeunload', function(){ try{ flushCatalogWrites(true); }catch(e){} flushSlotsToAll(); flushPendingSave(); });
     } catch(e){}
     // Cache Storage に保存（まだ試していない保存先）
     async function writeSlotsToCache(slots){
@@ -1385,7 +1408,8 @@ SPECIAL_RECRUITS.forEach(sp=>{
         return false;
       }
       try { normalizeParty(); } catch(e) { console.warn('normalize err', e); }
-      const data = { version: 1, savedAt: Date.now(), state };
+      const data = savePayload();
+      flushCatalogWrites(false);
       const slots = getSaveSlots();
       const playerLv = state?.party?.[0]?.level || 1;
       const playerName = state?.party?.[0]?.name || 'もも';
@@ -1486,7 +1510,10 @@ SPECIAL_RECRUITS.forEach(sp=>{
         return false;
       }
       try { normalizeParty(); } catch(e) {}
-      const data = { version: 1, savedAt: Date.now(), state };
+      const data = savePayload();
+      // 図鑑はこのスロットに確実に保存する（現在スロットを先に切り替えてから書く）
+      currentSlot = slotNum;
+      saveCatalogForSlot(slotNum);
       const slots = getSaveSlots();
       const playerLv = state?.party?.[0]?.level || 1;
       const playerName = state?.party?.[0]?.name || 'もも';
@@ -1503,7 +1530,6 @@ SPECIAL_RECRUITS.forEach(sp=>{
       if(idx >= 0) slots[idx] = slotData;
       else slots.push(slotData);
       setSaveSlots(slots);
-      currentSlot = slotNum;
       // 視覚的フィードバック
       addChat('good', `✅ スロット${slotNum}にセーブしました！（${playerName} Lv.${playerLv}、${partyCount}人）`);
       renderSaveSlots();
@@ -1530,6 +1556,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
         // 【修正】先に currentSlot を切り替える。読み込み処理中の自動セーブが
         //   直前に遊んでいた別スロットを上書きしてしまうのを防ぐ。
         currentSlot = slotNum;
+        _pendingCatalogSlot = slotNum;
         const ok = applyLoadedData(slot.data, true);
         if(ok) {
           addChat('good', `システム：スロット${slotNum}から「${slot.name}」（Lv.${slot.level}）をロードしました！`);
@@ -1796,6 +1823,17 @@ SPECIAL_RECRUITS.forEach(sp=>{
     function encodeSaveData(data){
       return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
     }
+    // 【追加】セーブコードは必要なときに生成（図鑑込みの完全版）
+    let _lastSaveData = null;
+    function currentSaveCode(){
+      try {
+        if(lastSaveCode) return lastSaveCode;
+        const data = state ? fullSavePayload() : _lastSaveData;
+        if(!data) return '';
+        lastSaveCode = encodeSaveData(data);
+        return lastSaveCode;
+      } catch(e){ return ''; }
+    }
 
     function decodeSaveText(text){
       return JSON.parse(decodeURIComponent(escape(atob(text))));
@@ -1885,6 +1923,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
         const b = list[index];
         if(!b || !b.data) { addChat('system','そのバックアップは見つかりませんでした。'); return false; }
         currentSlot = 0;
+        _pendingCatalogSlot = AUTO_SLOT;
         const ok = applyLoadedData(b.data, true);
         if(ok){
           addChat('good', `バックアップ（${b.name} Lv.${b.level} / ${formatSaveTime(b.at)}）から復元しました。`);
@@ -1927,7 +1966,9 @@ SPECIAL_RECRUITS.forEach(sp=>{
       if(!state) return;
       try{ logAction('セーブ実行','saveGame'); }catch(e){}
       try { normalizeParty(); } catch(e) {}
-      const data = { version: 1, savedAt: Date.now(), state };
+      const data = savePayload();
+      // 図鑑は別キーへ（変わっているときだけ）
+      flushCatalogWrites(false);
       let encoded = '';
       let savedSomewhere = false;
 
@@ -1957,18 +1998,18 @@ SPECIAL_RECRUITS.forEach(sp=>{
         savedSomewhere = true;
       } catch(e) {}
 
-      try {
-        encoded = encodeSaveData(data);
-        lastSaveCode = encoded;
-        // ※ 旧セーブの window.name / #save2= ハッシュ書き込みは廃止。
-        //   これらが新しいスロットセーブ(slots=)を上書き消去していたため。
-        //   セーブの永続化は setSaveSlots()（localStorage / URLハッシュ slots= / window.name）が担う。
-        savedSomewhere = true;
-      } catch(e) {}
+      // 【軽量化】セーブコード（base64）は重いので、必要なときに作る
+      lastSaveCode = '';
+      _lastSaveData = data;
+      savedSomewhere = true;
 
       updateContinueButton();
-      updateSaveCodeOutput();
-      if(typeof renderSaveSlots === 'function') renderSaveSlots();
+      if(typeof renderSaveSlots === 'function'){
+        // 【軽量化】セーブ一覧が見えているときだけ描き直す
+        const box = $('saveSlotsBox');
+        const visible = box && box.offsetParent !== null;
+        if(visible) renderSaveSlots();
+      }
       if(savedSomewhere && ($('create')?.classList.contains('active') || $('title')?.classList.contains('active'))) {
         setSaveStatus('セーブしました。タイトル画面の「続きから」で再開できます。', 'good');
       }
@@ -1977,6 +2018,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
 
     function applyLoadedData(data, message=true){
       if(!data || !data.state || !data.state.player) return false;
+      const prevCatalog = (state && state.catalog) ? state.catalog : null;
       state = data.state;
       if(!Array.isArray(state.customSpecies)) state.customSpecies = [];
       restoreCustomSpecies();
@@ -1989,6 +2031,22 @@ SPECIAL_RECRUITS.forEach(sp=>{
       if(!state.catalog) state.catalog = {allies:{}, enemies:{}};
       if(!state.catalog.allies) state.catalog.allies = {};
       if(!state.catalog.enemies) state.catalog.enemies = {};
+      // 【追加】セーブ本体から外した図鑑を、別キーから読み戻す
+      if(data.catalogExternal){
+        try {
+          const emptyNow = !Object.keys(state.catalog.enemies).length && !Object.keys(state.catalog.allies).length;
+          if(emptyNow){
+            const slotForCat = (_pendingCatalogSlot != null) ? _pendingCatalogSlot : AUTO_SLOT;
+            const ext = loadCatalogForSlot(slotForCat) || (prevCatalog && (Object.keys(prevCatalog.enemies||{}).length || Object.keys(prevCatalog.allies||{}).length) ? prevCatalog : null);
+            if(ext){
+              state.catalog = ext;
+              if(!state.catalog.allies) state.catalog.allies = {};
+              if(!state.catalog.enemies) state.catalog.enemies = {};
+            }
+          }
+        } catch(e){}
+        _pendingCatalogSlot = null;
+      }
       if(!state.memories) state.memories = {player:{}, npcs:{}};
       if(!state.memories.player) state.memories.player = {};
       if(!state.memories.npcs) state.memories.npcs = {};
@@ -2058,6 +2116,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
         if(code.startsWith('save=')) code = code.slice(5);
         const data = decodeSaveText(code);
         currentSlot = 0;
+        _pendingCatalogSlot = null;
         return applyLoadedData(data, true);
       } catch(e) {
         console.warn('セーブコードを読み込めませんでした', e);
@@ -2067,6 +2126,7 @@ SPECIAL_RECRUITS.forEach(sp=>{
 
     function updateSaveCodeOutput(){
       const out = $('saveCodeOutput');
+      // 【軽量化】セーブコードは重いので、ここでは作らない（必要なときに生成）
       if(out) out.value = lastSaveCode || '';
     }
 
@@ -2077,10 +2137,15 @@ SPECIAL_RECRUITS.forEach(sp=>{
       try {
         // 最新の自動セーブ(Aスロット) or 現在のstateからコードを作る
         let data = null;
-        const slots = getSaveSlots();
-        const auto = slots.find(s=>s.slot===AUTO_SLOT) || slots[0];
-        if(auto && auto.data) data = auto.data;
-        else if(state) data = { version:1, savedAt:Date.now(), state };
+        if(state) data = fullSavePayload();
+        else {
+          const slots = getSaveSlots();
+          const auto = slots.find(s=>s.slot===AUTO_SLOT) || slots[0];
+          if(auto && auto.data){
+            data = JSON.parse(JSON.stringify(auto.data));
+            if(data.state && !data.state.catalog){ data.state.catalog = loadCatalogForSlot(auto.slot) || {allies:{},enemies:{}}; }
+          }
+        }
         if(!data){ if(msg) msg.textContent='まだセーブがありません。ゲームを始めてください。'; return; }
         const code = encodeSaveData(data);
         box.value = code;
@@ -2128,11 +2193,11 @@ SPECIAL_RECRUITS.forEach(sp=>{
                                    : 'コピーできない場合は、コード欄を長押し→「コピー」してください。';
     }
     async function copySaveCode(){
-      if(!lastSaveCode && state) saveGame();
+      const code = currentSaveCode();
       const out = $('saveCodeOutput');
-      if(out) out.value = lastSaveCode || '';
+      if(out) out.value = code;
       try {
-        await navigator.clipboard.writeText(lastSaveCode || '');
+        await navigator.clipboard.writeText(code || '');
         addChat('good', 'システム：セーブコードをコピーしました。');
       } catch(e) {
         if(out){ out.focus(); out.select(); }
@@ -2316,8 +2381,19 @@ SPECIAL_RECRUITS.forEach(sp=>{
       const msg2 = $('fileSaveMsg2');
       const say = (t)=>{ if(msg) msg.textContent=t; if(msg2) msg2.textContent=t; };
       try {
-        const slots = getSaveSlots();
+        let slots = getSaveSlots();
         if(!slots || !slots.length){ say('まだセーブがありません。'); return; }
+        // 【追加】図鑑はセーブ本体と別に持っているので、書き出し時に埋め込む
+        slots = slots.map(sl=>{
+          try {
+            const d = JSON.parse(JSON.stringify(sl));
+            if(d.data && d.data.state && !d.data.state.catalog){
+              d.data.state.catalog = loadCatalogForSlot(sl.slot) || {allies:{},enemies:{}};
+              d.data.catalogExternal = false;
+            }
+            return d;
+          } catch(e){ return sl; }
+        });
         const text = JSON.stringify({shippoSave:true, slots:slots});
         const blob = new Blob([text], {type:'application/json;charset=utf-8'});
         const url = URL.createObjectURL(blob);
@@ -2384,7 +2460,8 @@ SPECIAL_RECRUITS.forEach(sp=>{
       try { logAction('画面切替', id); } catch(e){}
       document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
       $(id).classList.add('active');
-      if(typeof renderSaveSlots === 'function') renderSaveSlots();
+      // 【軽量化】セーブ一覧はタイトル画面のときだけ描く
+      if(id === 'title' && typeof renderSaveSlots === 'function') renderSaveSlots();
       // 広場を開いたら「行き先（マップ一覧）」が見える位置から始める（図鑑まで下がらない）
       if(id === 'plaza'){
         setTimeout(()=>{
@@ -2801,6 +2878,8 @@ SPECIAL_RECRUITS.forEach(sp=>{
     }
 
     function initState(name='もも', sp=species[0], npc1Name='ポチ', npc1Sp=speciesById('dog'), npc2Name='ミミ', npc2Sp=speciesById('rabbit')){
+      // 【安全対策】新しく始めたデータが、ロードしていたスロットを上書きしないようにする
+      currentSlot = 0;
       const player = makeCharacter(name, sp);
       state = {player, plazaVisited:false, cleared:0, money:0, enemyLevel:0, unlockedMaps:[0], storage:[], customSpecies:[], catalog:{allies:{}, enemies:{}}, memories:{player:{}, npcs:{}}, items:{levelUpBook:0, levelDownBook:0, partyLimitBook:0, enemyLimitBook:0}, partyLimit:3, enemyLimit:1, playSeconds:0};
       state.party = [player, makeAlly(npc1Name || 'ポチ', npc1Sp, 1), makeAlly(npc2Name || 'ミミ', npc2Sp, 1)];
@@ -3689,7 +3768,32 @@ SPECIAL_RECRUITS.forEach(sp=>{
     }
     function catalogStore(kind){ const c=ensureCatalog(); return c[kind]; }
     function catalogGet(kind, key){ return catalogStore(kind)[key] || null; }
-    function catalogPut(kind, key, entry){ catalogStore(kind)[key]=entry; return entry; }
+    // 【軽量化】図鑑は変わったときだけ保存する
+    let _catalogDirty = false, _catalogLastWrite = 0;
+    const CATALOG_WRITE_INTERVAL_MS = 5000;
+    function markCatalogDirty(){ _catalogDirty = true; }
+    let _catalogFlushTimer = null;
+    function doCatalogWrite(){
+      try {
+        if(!state || !state.catalog) return;
+        saveCatalogForSlot(AUTO_SLOT);
+        if(currentSlot >= 1 && currentSlot <= MAX_SLOTS) saveCatalogForSlot(currentSlot);
+        _catalogDirty = false;
+        _catalogLastWrite = Date.now();
+      } catch(e){}
+    }
+    // force=true のときだけ同期で書く。ふだんはボタン操作を邪魔しないよう、あとで書く
+    function flushCatalogWrites(force){
+      try {
+        if(!state || !state.catalog) return;
+        if(force){ if(_catalogFlushTimer){ clearTimeout(_catalogFlushTimer); _catalogFlushTimer=null; } doCatalogWrite(); return; }
+        if(!_catalogDirty) return;
+        if(_catalogFlushTimer) return;
+        const wait = Math.max(0, CATALOG_WRITE_INTERVAL_MS - (Date.now() - _catalogLastWrite));
+        _catalogFlushTimer = setTimeout(()=>{ _catalogFlushTimer = null; doCatalogWrite(); }, wait);
+      } catch(e){}
+    }
+    function catalogPut(kind, key, entry){ catalogStore(kind)[key]=entry; markCatalogDirty(); return entry; }
     function catalogAll(kind){ return Object.values(catalogStore(kind)||{}); }
 
     // 以前のバージョンは図鑑をIndexedDB（全セーブ共通）に保存していた。
